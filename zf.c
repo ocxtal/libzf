@@ -34,7 +34,8 @@
 
 
 /* constants */
-#define ZF_BUF_SIZE			( 512 * 1024 )		/* 512KB */
+#define ZF_BUF_SIZE					( 512 * 1024 )		/* 512KB */
+#define ZF_UNGETC_MARGIN_SIZE		( 32 )
 
 /* function pointer type aliases */
 typedef void *(*zf_dopen_t)(
@@ -123,10 +124,11 @@ struct zf_intl_s {
 	void *fp;		/* one of {FILE * / gzFile / BZFILE *} */
 	struct zf_functions_s fn;
 	uint8_t *buf;
-	uint64_t size;
-	uint64_t curr, end;
+	int64_t size;
+	int64_t curr, end;
+	char ungetc_margin[ZF_UNGETC_MARGIN_SIZE];
 };
-_static_assert(sizeof(struct zf_intl_s) == sizeof(struct zf_s));
+_static_assert(offsetof(struct zf_intl_s, ungetc_margin) == sizeof(struct zf_s));
 _static_assert_offset(struct zf_intl_s, path, struct zf_s, path, 0);
 _static_assert_offset(struct zf_intl_s, mode, struct zf_s, mode, 0);
 
@@ -453,6 +455,31 @@ int zfgetc(
 }
 
 /**
+ * @fn zfungetc
+ */
+int zfungetc(
+	zf_t *fp,
+	int c)
+{
+	struct zf_intl_s *fio = (struct zf_intl_s *)fp;
+	if(fio->curr > -ZF_UNGETC_MARGIN_SIZE) {
+		return(fio->buf[--fio->curr] = c);
+	} else {
+		return(-1);
+	}
+}
+
+/**
+ * @fn zfeof
+ */
+int zfeof(
+	zf_t *fp)
+{
+	struct zf_intl_s *fio = (struct zf_intl_s *)fp;
+	return((int)(fio->eof == 2));
+}
+
+/**
  * @fn zfputc
  */
 int zfputc(
@@ -577,7 +604,7 @@ void *make_random_array(
 	char *arr = (char *)ctx;
 
 /* test zfopen / zfclose with len 100M */
-#define TEST_ARR_LEN 		100000
+#define TEST_ARR_LEN 		1000000
 unittest(with(TEST_ARR_LEN))
 {
 	omajinai();
@@ -599,7 +626,10 @@ unittest(with(TEST_ARR_LEN))
 	char *rarr = (char *)malloc(TEST_ARR_LEN);
 	size_t read = zfread(rfp, rarr, TEST_ARR_LEN);
 	assert(read == TEST_ARR_LEN, "%llu", read);
+
+	/* EOF */
 	assert(zfgetc(rfp) == EOF, "%d", zfgetc(rfp));
+	assert(zfeof(rfp) != 0, "%d", zfeof(rfp));
 
 	zfclose(rfp);
 
@@ -632,7 +662,10 @@ unittest(with(TEST_ARR_LEN))
 	for(int64_t i = 0; i < TEST_ARR_LEN; i++) {
 		rarr[i] = zfgetc(rfp);
 	}
+
+	/* EOF */
 	assert(zfgetc(rfp) == EOF, "%d", zfgetc(rfp));
+	assert(zfeof(rfp) != 0, "%d", zfeof(rfp));
 
 	zfclose(rfp);
 
@@ -651,7 +684,7 @@ unittest(with(100000))
 
 	/* write */
 	zf_t *wfp = zfopen("tmp.txt", "w");
-	zfwrite(wfp, arr, TEST_ARR_LEN);
+	zfwrite(wfp, arr, 100000);
 	zfclose(wfp);
 
 	/* read */
@@ -662,8 +695,12 @@ unittest(with(100000))
 	
 	/* read the former half */
 	size_t read1 = zfpeek(rfp, rarr1, 50000);
-	size_t read2 = zfread(rfp, rarr2, 50000);
+	assert(zfeof(rfp) == 0, "%d", zfeof(rfp));
 	assert(read1 == 50000, "%llu", read1);
+
+
+	size_t read2 = zfread(rfp, rarr2, 50000);
+	assert(zfeof(rfp) == 0, "%d", zfeof(rfp));
 	assert(read2 == 50000, "%llu", read2);
 
 	assert(memcmp(arr, rarr1, 50000) == 0);
@@ -671,20 +708,50 @@ unittest(with(100000))
 
 	/* read the latter half */
 	read1 = zfpeek(rfp, rarr1, 50000);
-	read2 = zfread(rfp, rarr2, 50000);
 	assert(read1 == 50000, "%llu", read1);
+
+	read2 = zfread(rfp, rarr2, 50000);
 	assert(read2 == 50000, "%llu", read2);
 
 	assert(memcmp(&arr[50000], rarr1, 50000) == 0);
 	assert(memcmp(&arr[50000], rarr2, 50000) == 0);
 
+	/* EOF */
 	assert(zfgetc(rfp) == EOF, "%d", zfgetc(rfp));
+	assert(zfeof(rfp) != 0, "%d", zfeof(rfp));
 
 	zfclose(rfp);
 
 	/* cleanup */
 	free(rarr1);
 	free(rarr2);
+	remove("tmp.txt");
+}
+
+/* ungetc */
+unittest(with(TEST_ARR_LEN))
+{
+	omajinai();
+
+	/* write */
+	zf_t *wfp = zfopen("tmp.txt", "w");
+	zfwrite(wfp, arr, TEST_ARR_LEN);
+	zfclose(wfp);
+
+	/* push pop */
+	zf_t *rfp = zfopen("tmp.txt", "r");
+	int save = 'a';
+	for(int64_t i = 0; i < TEST_ARR_LEN; i++) {
+		zfungetc(rfp, save);
+		int c = zfgetc(rfp);
+		assert(c == save);
+		save = zfgetc(rfp);
+	}
+
+	save = zfgetc(rfp);
+	assert(save == EOF, "%d", save);
+
+	zfclose(rfp);
 	remove("tmp.txt");
 }
 
@@ -711,7 +778,10 @@ unittest(with(TEST_ARR_LEN))
 	char *rarr = (char *)malloc(TEST_ARR_LEN);
 	size_t read = zfread(rfp, rarr, TEST_ARR_LEN);
 	assert(read == TEST_ARR_LEN, "%llu", read);
+
+	/* EOF */
 	assert(zfgetc(rfp) == EOF, "%d", zfgetc(rfp));
+	assert(zfeof(rfp) != 0, "%d", zfeof(rfp));
 
 	zfclose(rfp);
 
@@ -747,7 +817,10 @@ unittest(with(TEST_ARR_LEN))
 	char *rarr = (char *)malloc(TEST_ARR_LEN);
 	size_t read = zfread(rfp, rarr, TEST_ARR_LEN);
 	assert(read == TEST_ARR_LEN, "%llu", read);
+
+	/* EOF */
 	assert(zfgetc(rfp) == EOF, "%d", zfgetc(rfp));
+	assert(zfeof(rfp) != 0, "%d", zfeof(rfp));
 
 	zfclose(rfp);
 
@@ -780,7 +853,10 @@ unittest(with(TEST_ARR_LEN))
 	for(int64_t i = 0; i < TEST_ARR_LEN; i++) {
 		rarr[i] = zfgetc(rfp);
 	}
+
+	/* EOF */
 	assert(zfgetc(rfp) == EOF, "%d", zfgetc(rfp));
+	assert(zfeof(rfp) != 0, "%d", zfeof(rfp));
 
 	zfclose(rfp);
 
@@ -816,7 +892,10 @@ unittest(with(TEST_ARR_LEN))
 	char *rarr = (char *)malloc(TEST_ARR_LEN);
 	size_t read = zfread(rfp, rarr, TEST_ARR_LEN);
 	assert(read == TEST_ARR_LEN, "%llu", read);
+
+	/* EOF */
 	assert(zfgetc(rfp) == EOF, "%d", zfgetc(rfp));
+	assert(zfeof(rfp) != 0, "%d", zfeof(rfp));
 
 	zfclose(rfp);
 
@@ -852,7 +931,10 @@ unittest(with(TEST_ARR_LEN))
 	char *rarr = (char *)malloc(TEST_ARR_LEN);
 	size_t read = zfread(rfp, rarr, TEST_ARR_LEN);
 	assert(read == TEST_ARR_LEN, "%llu", read);
+
+	/* EOF */
 	assert(zfgetc(rfp) == EOF, "%d", zfgetc(rfp));
+	assert(zfeof(rfp) != 0, "%d", zfeof(rfp));
 
 	zfclose(rfp);
 
@@ -885,7 +967,10 @@ unittest(with(TEST_ARR_LEN))
 	for(int64_t i = 0; i < TEST_ARR_LEN; i++) {
 		rarr[i] = zfgetc(rfp);
 	}
+
+	/* EOF */
 	assert(zfgetc(rfp) == EOF, "%d", zfgetc(rfp));
+	assert(zfeof(rfp) != 0, "%d", zfeof(rfp));
 
 	zfclose(rfp);
 

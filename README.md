@@ -74,6 +74,25 @@ int zfgetc(
 	zf_t *fp);
 ```
 
+### zfungetc
+
+Must not be called > 32 times contiguously.
+
+```
+int zfungetc(
+	zf_t *fp,
+	int c);
+```
+
+### zfeof
+
+feof compatible
+
+```
+int zfeof(
+	zf_t *fp);
+```
+
 ### zfputc
 
 putc compatible.

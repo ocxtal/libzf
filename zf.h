@@ -19,7 +19,8 @@ struct zf_s {
 	char const *mode;
 	int reserved1[2];
 	void *reserved2[10];
-	uint64_t reserved3[3];
+	int64_t reserved3[3];
+
 };
 typedef struct zf_s zf_t;
 
@@ -71,6 +72,19 @@ size_t zfwrite(
  * @fn zfgetc
  */
 int zfgetc(
+	zf_t *zf);
+
+/**
+ * @fn zfungetc
+ */
+int zfungetc(
+	zf_t *zf,
+	int c);
+
+/**
+ * @fn zfeof
+ */
+int zfeof(
 	zf_t *zf);
 
 /**
