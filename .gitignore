@@ -1,0 +1,7 @@
+.waf-*
+build
+a.out
+stuff
+.DS_Store
+tmp.txt
+
