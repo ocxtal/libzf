@@ -5,7 +5,9 @@ def options(opt):
 	opt.load('compiler_c')
 
 def configure(conf):
+	conf.load('ar')
 	conf.load('compiler_c')
+	
 	if 'LIB_Z' not in conf.env:
 		conf.check_cc(
 			lib = 'z',
