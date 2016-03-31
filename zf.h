@@ -50,6 +50,15 @@ size_t zfread(
 	size_t len);
 
 /**
+ * @fn zfpeek
+ * @brief read len (< 512k) without advancing pointer
+ */
+size_t zfglance(
+	zf_t *zf,
+	void *ptr,
+	size_t len);
+
+/**
  * @fn zfwrite
  * @brief write to file, similar to gzwrite
  */

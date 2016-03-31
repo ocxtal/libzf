@@ -43,6 +43,17 @@ size_t zfread(
 	size_t len);
 ```
 
+### zfpeek
+
+Read the content of the file, without advancing the file pointer. `len` must be less than or equal to 512 kilobytes.
+
+```
+size_t zfpeek(
+	zf_t *fp,
+	void *ptr,
+	size_t len);
+```
+
 ### zfwrite
 
 Write to the file by `len`.

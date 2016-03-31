@@ -352,17 +352,67 @@ size_t zfread(
 
 	/* if fp already reached EOF */
 	if(fio->eof == 1) {
-		fio->eof = 2;
+		fio->eof += (fio->curr == fio->end);
 		return(copied_size);
 	}
 
 	/* issue fread */
 	if(len > 0) {
 		uint64_t read_size = fio->fn.read(fio->fp, ptr, len);
+		fio->eof = 1 + (read_size < len);
 		copied_size += read_size;
-		if(read_size < len) {
-			fio->eof = 2;
+	}
+	return(copied_size);
+}
+
+/**
+ * @fn zfpeek
+ * @brief read len (< 512k) without advancing pointer
+ */
+size_t zfpeek(
+	zf_t *fp,
+	void *ptr,
+	size_t len)
+{
+	struct zf_intl_s *fio = (struct zf_intl_s *)fp;
+	size_t copied_size = 0;
+
+	/* check eof */
+	if(fio->eof == 2) {
+		return(0);
+	}
+
+	/* copy from buffer */
+	if(fio->curr < fio->end) {
+		uint64_t rem_size = fio->end - fio->curr;
+		uint64_t buf_copy_size = (rem_size < len) ? rem_size : len;
+		memcpy(ptr, (void *)&fio->buf[fio->curr], buf_copy_size);
+		
+		/* update length (without advancing pointer) */
+		len -= buf_copy_size;
+		ptr += buf_copy_size;
+		copied_size += buf_copy_size;
+	}
+
+	if(len > 0) {
+		/* move existing elements to the head of the buffer */
+		if(fio->curr != 0 && fio->curr < fio->end) {
+			memmove((void *)fio->buf, (void *)&fio->buf[fio->curr], fio->end - fio->curr);
+			fio->end -= fio->curr;
+			fio->curr = 0;
 		}
+
+		/* read */
+		uint64_t read_size = fio->fn.read(fio->fp, (void *)&fio->buf[fio->end], fio->size - fio->end);
+
+		/* copy */
+		uint64_t copy_size = (read_size < len) ? read_size : len;
+		memcpy(ptr, (void *)&fio->buf[fio->end], copy_size);
+
+		/* update status */
+		copied_size += copy_size;
+		fio->eof = (read_size < fio->size - fio->end) + (copied_size == 0);
+		fio->end += read_size;
 	}
 	return(copied_size);
 }
@@ -591,6 +641,50 @@ unittest(with(TEST_ARR_LEN))
 
 	/* cleanup */
 	free(rarr);
+	remove("tmp.txt");
+}
+
+/* peek */
+unittest(with(100000))
+{
+	omajinai();
+
+	/* write */
+	zf_t *wfp = zfopen("tmp.txt", "w");
+	zfwrite(wfp, arr, TEST_ARR_LEN);
+	zfclose(wfp);
+
+	/* read */
+	zf_t *rfp = zfopen("tmp.txt", "r");
+
+	char *rarr1 = (char *)malloc(TEST_ARR_LEN);
+	char *rarr2 = (char *)malloc(TEST_ARR_LEN);
+	
+	/* read the former half */
+	size_t read1 = zfpeek(rfp, rarr1, 50000);
+	size_t read2 = zfread(rfp, rarr2, 50000);
+	assert(read1 == 50000, "%llu", read1);
+	assert(read2 == 50000, "%llu", read2);
+
+	assert(memcmp(arr, rarr1, 50000) == 0);
+	assert(memcmp(arr, rarr2, 50000) == 0);
+
+	/* read the latter half */
+	read1 = zfpeek(rfp, rarr1, 50000);
+	read2 = zfread(rfp, rarr2, 50000);
+	assert(read1 == 50000, "%llu", read1);
+	assert(read2 == 50000, "%llu", read2);
+
+	assert(memcmp(&arr[50000], rarr1, 50000) == 0);
+	assert(memcmp(&arr[50000], rarr2, 50000) == 0);
+
+	assert(zfgetc(rfp) == EOF, "%d", zfgetc(rfp));
+
+	zfclose(rfp);
+
+	/* cleanup */
+	free(rarr1);
+	free(rarr2);
 	remove("tmp.txt");
 }
 
