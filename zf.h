@@ -11,7 +11,16 @@
 #ifndef _ZF_H_INCLUDED
 #define _ZF_H_INCLUDED
 
+#include <stdint.h>
+
 /* type aliases */
+struct zf_s {
+	char const *path;
+	char const *mode;
+	int reserved1[2];
+	void *reserved2[10];
+	uint64_t reserved3[3];
+};
 typedef struct zf_s zf_t;
 
 

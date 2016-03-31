@@ -11,6 +11,7 @@
 #include <string.h>
 #include <unistd.h>
 #include "kopen.h"
+#include "sassert.h"
 #include "zf.h"
 
 #ifdef HAVE_Z
@@ -110,21 +111,24 @@ struct zf_functions_s {
 };
 
 /**
- * @struct zf_s
+ * @struct zf_intl_s
  * @brief context container
  */
-struct zf_s {
+struct zf_intl_s {
 	char *path;
 	char *mode;
 	int fd;
 	int eof;		/* == 1 if fp reached EOF, == 2 if curr reached the end of buf */
 	void *ko;
 	void *fp;		/* one of {FILE * / gzFile / BZFILE *} */
+	struct zf_functions_s fn;
 	uint8_t *buf;
 	uint64_t size;
 	uint64_t curr, end;
-	struct zf_functions_s fn;
 };
+_static_assert(sizeof(struct zf_intl_s) == sizeof(struct zf_s));
+_static_assert_offset(struct zf_intl_s, path, struct zf_s, path, 0);
+_static_assert_offset(struct zf_intl_s, mode, struct zf_s, mode, 0);
 
 /**
  * @val fn_table
@@ -134,7 +138,7 @@ static
 struct zf_functions_s const fn_table[] = {
 	/* default */
 	{
-		.ext = NULL,
+		.ext = "",
 		.dopen = (zf_dopen_t)fdopen,
 		.open = (zf_open_t)fopen,
 		.init = (zf_init_t)NULL,
@@ -187,6 +191,7 @@ zf_t *zfopen(
 	}
 
 	/* determine format */
+	char *path_dup = (char *)path;
 	char *mode_dup = (char *)mode;
 	char const *path_tail = path + strlen(path);
 	char const *mode_tail = mode + strlen(mode);
@@ -200,6 +205,8 @@ zf_t *zfopen(
 
 			/* hit */
 			fn = &fn_table[i];
+			path_dup = strdup(path);
+			path_dup[strlen(path) - strlen(fn_table[i].ext)] = '\0';
 			break;
 		}
 
@@ -210,7 +217,7 @@ zf_t *zfopen(
 			
 			/* hit */
 			fn = &fn_table[i];
-			char *mode_dup = strdup(mode);
+			mode_dup = strdup(mode);
 			mode_dup[strlen(mode) - strlen(fn_table[i].ext)] = '\0';
 			break;
 		}
@@ -222,12 +229,12 @@ zf_t *zfopen(
 	}
 
 	/* malloc context */
-	struct zf_s *fio = (struct zf_s *)malloc(
-		sizeof(struct zf_s) + ZF_BUF_SIZE);
+	struct zf_intl_s *fio = (struct zf_intl_s *)malloc(
+		sizeof(struct zf_intl_s) + ZF_BUF_SIZE);
 	if(fio == NULL) {
 		return(NULL);
 	}
-	memset(fio, 0, sizeof(struct zf_s));
+	memset(fio, 0, sizeof(struct zf_intl_s));
 	fio->buf = (uint8_t *)(fio + 1);
 	fio->size = ZF_BUF_SIZE;
 	fio->fn = *fn;
@@ -268,7 +275,7 @@ _zfopen_finish:;
 	}
 
 	/* everything is going right */
-	fio->path = strdup(path);
+	fio->path = (path_dup == path) ? strdup(path) : path_dup;
 	fio->mode = (mode_dup == mode) ? strdup(mode) : mode_dup;
 	fio->curr = fio->end = 0;
 	if(fio->fn.init != NULL) {
@@ -283,8 +290,10 @@ _zfopen_finish:;
  * @brief close file, similar to fclose / gzclose
  */
 int zfclose(
-	zf_t *fio)
+	zf_t *fp)
 {
+	struct zf_intl_s *fio = (struct zf_intl_s *)fp;
+
 	if(fio == NULL) {
 		return(1);
 	}
@@ -316,10 +325,11 @@ int zfclose(
  * @brief read from file, similar to gzread
  */
 size_t zfread(
-	zf_t *fio,
+	zf_t *fp,
 	void *ptr,
 	size_t len)
 {
+	struct zf_intl_s *fio = (struct zf_intl_s *)fp;
 	size_t copied_size = 0;
 
 	/* check eof */
@@ -362,10 +372,11 @@ size_t zfread(
  * @brief write to file, similar to gzwrite
  */
 size_t zfwrite(
-	zf_t *fio,
+	zf_t *fp,
 	void *ptr,
 	size_t len)
 {
+	struct zf_intl_s *fio = (struct zf_intl_s *)fp;
 	return(fio->fn.write(fio->fp, ptr, len));
 }
 
@@ -373,8 +384,10 @@ size_t zfwrite(
  * @fn zfgetc
  */
 int zfgetc(
-	zf_t *fio)
+	zf_t *fp)
 {
+	struct zf_intl_s *fio = (struct zf_intl_s *)fp;
+
 	/* if the pointer reached the end, refill the buffer */
 	if(fio->curr >= fio->end) {
 		fio->curr = 0;
@@ -393,9 +406,10 @@ int zfgetc(
  * @fn zfputc
  */
 int zfputc(
-	zf_t *fio,
+	zf_t *fp,
 	int c)
 {
+	struct zf_intl_s *fio = (struct zf_intl_s *)fp;
 	fio->buf[fio->curr++] = (uint8_t)c;
 	
 	/* flush if buffer is full */
@@ -410,13 +424,13 @@ int zfputc(
  * @fn zfputs
  */
 int zfputs(
-	zf_t *fio,
+	zf_t *fp,
 	char const *s)
 {
 	while(*s != '\0') {
-		zfputc(fio, (int)*s++);
+		zfputc(fp, (int)*s++);
 	}
-	zfputc(fio, '\n');
+	zfputc(fp, '\n');
 	return(0);
 }
 
@@ -424,10 +438,11 @@ int zfputs(
  * @fn zfprintf
  */
 int zfprintf(
-	zf_t *fio,
+	zf_t *fp,
 	char const *format,
 	...)
 {
+	struct zf_intl_s *fio = (struct zf_intl_s *)fp;
 	va_list l;
 	va_start(l, format);
 
@@ -471,7 +486,7 @@ void clean_rand(
 }
 
 unittest_config(
-	.name = "fio",
+	.name = "zf",
 	.init = init_rand,
 	.clean = clean_rand
 );
@@ -512,7 +527,7 @@ void *make_random_array(
 	char *arr = (char *)ctx;
 
 /* test zfopen / zfclose with len 100M */
-#define TEST_ARR_LEN 		100000000
+#define TEST_ARR_LEN 		100000
 unittest(with(TEST_ARR_LEN))
 {
 	omajinai();
@@ -529,6 +544,7 @@ unittest(with(TEST_ARR_LEN))
 	/* read */
 	zf_t *rfp = zfopen("tmp.txt", "r");
 	assert(rfp != NULL, "%p", rfp);
+	assert(strcmp(rfp->path, "tmp.txt") == 0, "%s", rfp->path);
 
 	char *rarr = (char *)malloc(TEST_ARR_LEN);
 	size_t read = zfread(rfp, rarr, TEST_ARR_LEN);
@@ -596,6 +612,7 @@ unittest(with(TEST_ARR_LEN))
 	/* read */
 	zf_t *rfp = zfopen("tmp.txt.gz", "r");
 	assert(rfp != NULL, "%p", rfp);
+	assert(strcmp(rfp->path, "tmp.txt") == 0, "%s", rfp->path);
 
 	char *rarr = (char *)malloc(TEST_ARR_LEN);
 	size_t read = zfread(rfp, rarr, TEST_ARR_LEN);
@@ -620,6 +637,7 @@ unittest(with(TEST_ARR_LEN))
 	/* write */
 	zf_t *wfp = zfopen("tmpfile", "w.gz");
 	assert(wfp != NULL, "%p", wfp);
+	assert(strcmp(wfp->mode, "w") == 0, "%s", wfp->mode);
 
 	size_t written = zfwrite(wfp, arr, TEST_ARR_LEN);
 	assert(written == TEST_ARR_LEN, "%llu", written);
@@ -629,6 +647,8 @@ unittest(with(TEST_ARR_LEN))
 	/* read */
 	zf_t *rfp = zfopen("tmpfile", "r.gz");
 	assert(rfp != NULL, "%p", rfp);
+	assert(strcmp(rfp->path, "tmpfile") == 0, "%s", rfp->path);
+	assert(strcmp(rfp->mode, "r") == 0, "%s", rfp->mode);
 
 	char *rarr = (char *)malloc(TEST_ARR_LEN);
 	size_t read = zfread(rfp, rarr, TEST_ARR_LEN);
@@ -697,6 +717,7 @@ unittest(with(TEST_ARR_LEN))
 	/* read */
 	zf_t *rfp = zfopen("tmp.txt.bz2", "r");
 	assert(rfp != NULL, "%p", rfp);
+	assert(strcmp(rfp->path, "tmp.txt") == 0, "%s", rfp->path);
 
 	char *rarr = (char *)malloc(TEST_ARR_LEN);
 	size_t read = zfread(rfp, rarr, TEST_ARR_LEN);
@@ -721,6 +742,7 @@ unittest(with(TEST_ARR_LEN))
 	/* write */
 	zf_t *wfp = zfopen("tmpfile", "w.bz2");
 	assert(wfp != NULL, "%p", wfp);
+	assert(strcmp(wfp->mode, "w") == 0, "%s", wfp->mode);
 
 	size_t written = zfwrite(wfp, arr, TEST_ARR_LEN);
 	assert(written == TEST_ARR_LEN, "%llu", written);
@@ -730,6 +752,8 @@ unittest(with(TEST_ARR_LEN))
 	/* read */
 	zf_t *rfp = zfopen("tmpfile", "r.bz2");
 	assert(rfp != NULL, "%p", rfp);
+	assert(strcmp(rfp->path, "tmpfile") == 0, "%s", rfp->path);
+	assert(strcmp(rfp->mode, "r") == 0, "%s", rfp->mode);
 
 	char *rarr = (char *)malloc(TEST_ARR_LEN);
 	size_t read = zfread(rfp, rarr, TEST_ARR_LEN);
