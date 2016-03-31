@@ -54,7 +54,7 @@ size_t zfread(
  * @fn zfpeek
  * @brief read len (< 512k) without advancing pointer
  */
-size_t zfglance(
+size_t zfpeek(
 	zf_t *zf,
 	void *ptr,
 	size_t len);
