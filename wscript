@@ -23,6 +23,7 @@ def configure(conf):
 	conf.env.append_value('LIB_ZF', conf.env.LIB_Z + conf.env.LIB_BZ2)
 	conf.env.append_value('DEFINES_ZF', conf.env.DEFINES_Z + conf.env.DEFINES_BZ2)
 	conf.env.append_value('CFLAGS', '-O3')
+	conf.env.append_value('CFLAGS', '-std=c99')
 	conf.env.append_value('CFLAGS', '-march=native')
 
 
