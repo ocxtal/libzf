@@ -23,12 +23,7 @@
 #endif
 
 #define UNITTEST_UNIQUE_ID			44
-
-#ifdef TEST
-/* use auto-generated main function to run tests */
 #define UNITTEST 					1
-#define UNITTEST_ALIAS_MAIN			1
-#endif
 
 #include "unittest.h"
 
@@ -544,7 +539,6 @@ int zfprintf(
 }
 
 /* unittests */
-#ifdef TEST
 #include <time.h>
 
 /**
@@ -982,8 +976,6 @@ unittest(with(TEST_ARR_LEN))
 	remove("tmp.txt.bz2");
 }
 #endif /* HAVE_BZ2 */
-
-#endif
 
 /**
  * end of zf.c

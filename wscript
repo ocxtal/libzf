@@ -7,7 +7,7 @@ def options(opt):
 def configure(conf):
 	conf.load('ar')
 	conf.load('compiler_c')
-	
+
 	if 'LIB_Z' not in conf.env:
 		conf.check_cc(
 			lib = 'z',
@@ -35,7 +35,9 @@ def build(bld):
 		defines = bld.env.DEFINES_ZF)
 
 	bld.program(
-		source = ['zf.c', 'kopen.c'],
+		source = ['unittest.c'],
 		target = 'unittest',
+		linkflags = ['-all_load'],
+		use = ['zf'],
 		lib = bld.env.LIB_ZF,
 		defines = ['TEST'] + bld.env.DEFINES_ZF)
