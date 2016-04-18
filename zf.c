@@ -265,9 +265,9 @@ _zfopen_finish:;
 	if(fio->fp == NULL) {
 		/* something wrong occurred */
 		if(fio->ko != NULL) {
-			kclose(fio->ko);
+			kclose(fio->ko); fio->ko = NULL;
 		}
-		free(fio);
+		free(fio); fio = NULL;
 		return(NULL);
 	}
 
@@ -302,18 +302,14 @@ int zfclose(
 
 	/* close file */
 	if(fio->fp != NULL) {
-		fio->fn.close(fio->fp);
+		fio->fn.close(fio->fp); fio->fp = NULL;
 		if(fio->ko != NULL) {
-			kclose(fio->ko);
+			kclose(fio->ko); fio->ko = NULL;
 		}
 	}
-	if(fio->path != NULL) {
-		free(fio->path);
-	}
-	if(fio->mode != NULL) {
-		free(fio->mode);
-	}
-	free(fio);
+	free(fio->path); fio->path = NULL;
+	free(fio->mode); fio->mode = NULL;
+	free(fio); fio = NULL;
 	return(0);
 }
 
