@@ -39,7 +39,7 @@ typedef void *(*zf_dopen_t)(
 typedef void *(*zf_open_t)(
 	char const *path,
 	char const *mode);
-typedef void (*zf_init_t)(
+typedef int (*zf_init_t)(
 	void *);
 typedef void *(*zf_close_t)(
 	void *fp);
@@ -53,6 +53,16 @@ typedef size_t (*zf_write_t)(
 	size_t len);
 
 /* wrapped functions */
+
+/**
+ * @fn zf_init_stdio
+ * @brief wrapped setvbuf
+ */
+int zf_init_stdio(
+	void *fp)
+{
+	return(setvbuf((FILE *)fp, NULL, _IOFBF, ZF_BUF_SIZE));
+}
 
 /**
  * @fn fread_wrap
@@ -84,11 +94,14 @@ size_t fwrite_wrap(
  * @fn zf_init_gzip
  * @brief setup function, set buffer size to 512k
  */
-void zf_init_gzip(
+int zf_init_gzip(
 	void *fp)
 {
-	gzbuffer((gzFile)fp, 512 * 1024);		/** 512 kilobytes */
-	return;
+	#if ZLIB_VERNUM >= 0x1240
+		return(gzbuffer((gzFile)fp, ZF_BUF_SIZE));
+	#else
+		return(0);
+	#endif
 }
 #endif
 
@@ -138,7 +151,7 @@ struct zf_functions_s const fn_table[] = {
 		.ext = "",
 		.dopen = (zf_dopen_t)fdopen,
 		.open = (zf_open_t)fopen,
-		.init = (zf_init_t)NULL,
+		.init = (zf_init_t)zf_init_stdio,
 		.close = (zf_close_t)fclose,
 		.read = (zf_read_t)fread_wrap,
 		.write = (zf_write_t)fwrite_wrap
@@ -276,7 +289,10 @@ _zfopen_finish:;
 	fio->mode = (mode_dup == mode) ? strdup(mode) : mode_dup;
 	fio->curr = fio->end = 0;
 	if(fio->fn.init != NULL) {
-		fio->fn.init(fio->fp);
+		if(fio->fn.init(fio->fp) != 0) {
+			zfclose((zf_t *)fio);
+			return(NULL);
+		}
 	}
 
 	return((zf_t *)fio);
