@@ -368,7 +368,7 @@ size_t zfread(
 	/* issue fread */
 	if(len > 0) {
 		uint64_t read_size = fio->fn.read(fio->fp, ptr, len);
-		fio->eof = 1 + (read_size < len);
+		fio->eof = 2 * (read_size < len);
 		copied_size += read_size;
 	}
 	return(copied_size);
