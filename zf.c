@@ -501,6 +501,9 @@ int zfputc(
 	if(fio->curr == fio->size) {
 		fio->curr = 0;
 		uint64_t written = fio->fn.write(fio->fp, fio->buf, fio->size);
+		if(written != fio->size) {
+			return(-1);
+		}
 	}
 	return(c);
 }
