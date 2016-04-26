@@ -20,24 +20,30 @@ def configure(conf):
 			defines = ['HAVE_BZ2'],
 			mandatory = False)
 
-	conf.env.append_value('LIB_ZF', conf.env.LIB_Z + conf.env.LIB_BZ2)
-	conf.env.append_value('DEFINES_ZF', conf.env.DEFINES_Z + conf.env.DEFINES_BZ2)
 	conf.env.append_value('CFLAGS', '-O3')
 	conf.env.append_value('CFLAGS', '-std=c99')
 	conf.env.append_value('CFLAGS', '-march=native')
 
+	conf.env.append_value('LIB_ZF', conf.env.LIB_Z + conf.env.LIB_BZ2)
+	conf.env.append_value('DEFINES_ZF', conf.env.DEFINES_Z + conf.env.DEFINES_BZ2)
+	conf.env.append_value('OBJ_ZF', ['zf.o', 'kopen.o'])
+
 
 def build(bld):
+
+	bld.objects(source = 'kopen.c', target = 'kopen.o')
+	bld.objects(source = 'zf.c', target = 'zf.o')
+
 	bld.stlib(
-		source = ['zf.c', 'kopen.c'],
-		target = 'zf',
+		source = ['unittest.c'],
+		target = 'ptask',
+		use = bld.env.OBJ_ZF,
 		lib = bld.env.LIB_ZF,
 		defines = bld.env.DEFINES_ZF)
 
 	bld.program(
 		source = ['unittest.c'],
 		target = 'unittest',
-		linkflags = ['-all_load'],
-		use = ['zf'],
+		use = bld.env.OBJ_ZF,
 		lib = bld.env.LIB_ZF,
 		defines = ['TEST'] + bld.env.DEFINES_ZF)
