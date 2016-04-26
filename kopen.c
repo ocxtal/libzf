@@ -1,3 +1,15 @@
+
+
+/* for compatibility with -std=c99 (2016/4/26 by Hajime Suzuki) */
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE		200112L
+#endif
+
+#ifndef _BSD_SOURCE
+#define _BSD_SOURCE
+#endif
+/* end */
+
 #include <stdio.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -91,12 +103,14 @@ static int http_open(const char *fn)
 	buf = calloc(0x10000, 1); // FIXME: I am lazy... But in principle, 64KB should be large enough.
 	l += sprintf(buf + l, "GET %s HTTP/1.0\r\nHost: %s\r\n", path, http_host);
 	l += sprintf(buf + l, "\r\n");
-	write(fd, buf, l);
-	l = 0;
-	while (read(fd, buf + l, 1)) { // read HTTP header; FIXME: bad efficiency
-		if (buf[l] == '\n' && l >= 3)
-			if (strncmp(buf + l - 3, "\r\n\r\n", 4) == 0) break;
-		++l;
+	if (write(fd, buf, l) == -1) {
+		// success
+		l = 0;
+		while (read(fd, buf + l, 1)) { // read HTTP header; FIXME: bad efficiency
+			if (buf[l] == '\n' && l >= 3)
+				if (strncmp(buf + l - 3, "\r\n\r\n", 4) == 0) break;
+			++l;
+		}
 	}
 	buf[l] = 0;
 	if (l < 14) { // prematured header
@@ -144,7 +158,7 @@ static int kftp_get_response(ftpaux_t *aux)
 static int kftp_send_cmd(ftpaux_t *aux, const char *cmd, int is_get)
 {
 	if (socket_wait(aux->ctrl_fd, 0) <= 0) return -1; // socket is not ready for writing
-	write(aux->ctrl_fd, cmd, strlen(cmd));
+	if (write(aux->ctrl_fd, cmd, strlen(cmd)) == -1) return -1;
 	return is_get? kftp_get_response(aux) : 0;
 }
 
@@ -263,7 +277,9 @@ void *kopen(const char *fn, int *_fd)
 				if (ispunct(*q) && *q != '.' && *q != '_' && *q != '-' && *q != ':')
 					break;
 			need_shell = (*q != 0);
-			pipe(pfd);
+			if (pipe(pfd) != 0) {
+				return 0;
+			}
 			pid = vfork();
 			if (pid == -1) { /* vfork() error */
 				close(pfd[0]); close(pfd[1]);
