@@ -5,15 +5,10 @@
  * @brief zlib-file API compatible I/O wrapper library
  */
 
-/* for compatibility with -std=c99 (2016/4/26 by Hajime Suzuki) */
-#ifndef _POSIX_C_SOURCE
-#define _POSIX_C_SOURCE		200112L
-#endif
+#define UNITTEST_UNIQUE_ID			44
+#define UNITTEST 					1
 
-#ifndef _BSD_SOURCE
-#define _BSD_SOURCE
-#endif
-/* end */
+#include "unittest.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -32,11 +27,6 @@
 #ifdef HAVE_BZ2
 #include "bzlib.h"
 #endif
-
-#define UNITTEST_UNIQUE_ID			44
-#define UNITTEST 					1
-
-#include "unittest.h"
 
 
 /* constants */
