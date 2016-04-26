@@ -36,7 +36,7 @@ def build(bld):
 
 	bld.stlib(
 		source = ['unittest.c'],
-		target = 'ptask',
+		target = 'zf',
 		use = bld.env.OBJ_ZF,
 		lib = bld.env.LIB_ZF,
 		defines = bld.env.DEFINES_ZF)
