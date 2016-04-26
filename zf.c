@@ -4,6 +4,17 @@
  *
  * @brief zlib-file API compatible I/O wrapper library
  */
+
+/* for compatibility with -std=c99 (2016/4/26 by Hajime Suzuki) */
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE		200112L
+#endif
+
+#ifndef _BSD_SOURCE
+#define _BSD_SOURCE
+#endif
+/* end */
+
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdint.h>
