@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include "cvec.h"
 #include "kopen.h"
 #include "sassert.h"
 #include "zf.h"
@@ -29,8 +30,13 @@
 #endif
 
 
+/* max, min */
+#define MAX2(x, y)					( (x) < (y) ? (y) : (x) )
+#define MIN2(x, y)					( (x) > (y) ? (y) : (x) )
+
 /* constants */
 #define ZF_BUF_SIZE					( 512 * 1024 )		/* 512KB */
+#define ZF_BUF_MARGIN_SIZE			( 2 * sizeof(cvec_t) )
 #define ZF_UNGETC_MARGIN_SIZE		( 32 )
 
 /* function pointer type aliases */
@@ -241,7 +247,7 @@ zf_t *zfopen(
 
 	/* malloc context */
 	struct zf_intl_s *fio = (struct zf_intl_s *)malloc(
-		sizeof(struct zf_intl_s) + ZF_BUF_SIZE);
+		sizeof(struct zf_intl_s) + ZF_BUF_SIZE + ZF_BUF_MARGIN_SIZE);
 	if(fio == NULL) {
 		return(NULL);
 	}
@@ -554,6 +560,72 @@ int zfprintf(
 	return((int)written);
 }
 
+
+/* char vector (cvec_t) getc / putc */
+/**
+ * @fn zfgetcv
+ */
+zfgetcv_t zfgetcv(
+	zf_t *fp)
+{
+	struct zf_intl_s *fio = (struct zf_intl_s *)fp;
+
+	uint8_t *ptr = fio->buf + fio->curr;
+	uint64_t len = sizeof(cvec_t);
+
+	/* if the pointer reached the end, refill the buffer */
+	if(fio->curr + sizeof(cvec_t) > fio->end) {
+		uint64_t rem_size = fio->end - fio->curr;
+		memmove(fio->buf, fio->buf + fio->curr, rem_size);
+
+		fio->curr = 0;
+		fio->end = rem_size + ((fio->eof == 0)
+			? fio->fn.read(fio->fp, fio->buf, fio->size)
+			: 0);
+		fio->eof = (fio->end < fio->size) + (fio->end == 0);
+
+		ptr = fio->buf;
+		len = MIN2(fio->end, sizeof(cvec_t));
+	}
+	if(fio->eof == 2) {
+		return((zfgetcv_t){
+			.ptr = NULL,
+			.len = 0
+		});
+	}
+
+	fio->curr += len;
+	return((zfgetcv_t){
+		.ptr = (cvec_t const *)ptr,
+		.len = len
+	});
+}
+
+/**
+ * @fn zfputcv
+ */
+int zfputcv(
+	zf_t *fp,
+	cvec_t cv)
+{
+	struct zf_intl_s *fio = (struct zf_intl_s *)fp;
+	_store_cvec(fio->buf + fio->curr, cv);
+	fio->curr += sizeof(cvec_t);
+	
+	/* flush if buffer is full */
+	if(fio->curr >= fio->size) {
+		fio->curr -= fio->size;
+		uint64_t written = fio->fn.write(fio->fp, fio->buf, fio->size);
+		if(written != fio->size) {
+			return(-1);
+		}
+
+		memmove(fio->buf, fio->buf + fio->size, fio->curr);
+	}
+	return(0);
+}
+
+
 /* unittests */
 #include <time.h>
 
@@ -660,7 +732,8 @@ unittest(with(TEST_ARR_LEN))
 	zf_t *wfp = zfopen("tmp.txt", "w");
 
 	for(int64_t i = 0; i < TEST_ARR_LEN; i++) {
-		zfputc(wfp, arr[i]);
+		int ret = zfputc(wfp, arr[i]);
+		assert((char)ret == arr[i], "%c, %c", (char)ret, arr[i]);
 	}
 
 	zfclose(wfp);
@@ -670,7 +743,8 @@ unittest(with(TEST_ARR_LEN))
 
 	char *rarr = (char *)malloc(TEST_ARR_LEN);
 	for(int64_t i = 0; i < TEST_ARR_LEN; i++) {
-		rarr[i] = zfgetc(rfp);
+		int ret = rarr[i] = zfgetc(rfp);
+		assert(ret != EOF, "%d", ret);
 	}
 
 	/* EOF */
@@ -681,6 +755,64 @@ unittest(with(TEST_ARR_LEN))
 
 	/* compare */
 	assert(memcmp(arr, rarr, TEST_ARR_LEN) == 0);
+
+	/* cleanup */
+	free(rarr);
+	remove("tmp.txt");
+}
+
+/* getcv / putcv */
+unittest(with(1024))
+{
+	omajinai();
+
+	/* write with zfputc */
+	zf_t *wfp = zfopen("tmp.txt", "w");
+
+	for(int64_t i = 0; i < 3; i++) {
+		int ret = zfputc(wfp, arr[i]);
+		assert((char)ret == arr[i], "%c, %c", (char)ret, arr[i]);
+	}
+	for(int64_t i = 3; i < 1024 - sizeof(cvec_t); i += sizeof(cvec_t)) {
+		cvec_t c = _load_cvec(&arr[i]);
+		int ret = zfputcv(wfp, c);
+		assert(ret == 0, "%d", ret);
+	}
+	for(int64_t i = 1024 - sizeof(cvec_t) + 3; i < 1024; i++) {
+		int ret = zfputc(wfp, arr[i]);
+		assert((char)ret == arr[i], "%c, %c", (char)ret, arr[i]);
+	}
+
+	zfclose(wfp);
+
+	/* read with zfgetc */
+	zf_t *rfp = zfopen("tmp.txt", "r");
+
+	char *rarr = (char *)malloc(1024);
+	for(int64_t i = 0; i < 3; i++) {
+		int ret = rarr[i] = zfgetc(rfp);
+		assert(ret != EOF, "%d", ret);
+	}
+	for(int64_t i = 3; i < 1024 - sizeof(cvec_t); i += sizeof(cvec_t)) {
+		zfgetcv_t r = zfgetcv(rfp);
+		assert(r.ptr != NULL, "%p", r.ptr);
+		assert(r.len == sizeof(cvec_t), "%zu", r.len);
+
+		_store_cvec(&rarr[i], _load_cvec(r.ptr));
+	}
+	for(int64_t i = 1024 - sizeof(cvec_t) + 3; i < 1024; i++) {
+		int ret = rarr[i] = zfgetc(rfp);
+		assert(ret != EOF, "%d", ret);
+	}
+
+	/* EOF */
+	assert(zfgetc(rfp) == EOF, "%d", zfgetc(rfp));
+	assert(zfeof(rfp) != 0, "%d", zfeof(rfp));
+
+	zfclose(rfp);
+
+	/* compare */
+	assert(memcmp(arr, rarr, 1024) == 0, "%s%s", dump(arr, 1024), dump(rarr, 1024));
 
 	/* cleanup */
 	free(rarr);

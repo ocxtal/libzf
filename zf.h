@@ -109,6 +109,27 @@ int zfprintf(
 	char const *format,
 	...);
 
+/* char vector getc / putc */
+struct zfgetcv_s {
+	cvec_t const *ptr;
+	size_t len;
+};
+typedef struct zfgetcv_s zfgetcv_t;
+
+/**
+ * @fn zfgetcv
+ */
+zfgetcv_t zfgetcv(
+	zf_t *zf);
+
+/**
+ * @fn zfputcv
+ */
+int zfputcv(
+	zf_t *zf,
+	cvec_t cv);
+
+
 #endif /* _ZF_H_INCLUDED */
 /**
  * end of zf.h
