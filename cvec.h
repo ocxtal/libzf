@@ -258,7 +258,7 @@ typedef struct cvec_s {
 })
 #define _conv_5t_cvec(v, pt) ({ \
 	__m128i const _t1 = _mm_loadu_si128((__m128i *)(pt)); \
-	__m128i const _t1 = _mm_loadu_si128((__m128i *)(pt) + 1); \
+	__m128i const _t2 = _mm_loadu_si128((__m128i *)(pt) + 1); \
 	cvec_t _r1 = _shuf_cvec(((cvec_t){ _t1, _t1 }), (v)); \
 	cvec_t _r2 = _shuf_cvec(((cvec_t){ _t2, _t2 }), (v)); \
 	cvec_t _mask = _gt_cvec((v), _set_cvec(0x10)); \
