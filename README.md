@@ -74,6 +74,15 @@ int zfgetc(
 	zf_t *fp);
 ```
 
+### zfgetcv
+
+push 32 characters at once. see [cvec](https://github.com/ocxtal/cvec) for the details of the vector type.
+
+```
+zfgetcv_t zfgetcv(
+	zf_t *fp);
+```
+
 ### zfungetc
 
 Must not be called > 32 times contiguously.
@@ -101,6 +110,16 @@ putc compatible.
 int zfputc(
 	zf_t *fp,
 	int c);
+```
+
+### zfputcv
+
+vector putc. returns zero on success.
+
+```
+int zfputcv(
+	zf_t *fp,
+	cvec_t cv);
 ```
 
 ### zfputs
