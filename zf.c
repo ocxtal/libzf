@@ -613,6 +613,16 @@ void *make_random_array(
 #define omajinai() \
 	char *arr = (char *)ctx;
 
+/* return NULL when failed to open */
+unittest()
+{
+	char const *filename = "test.txt";
+
+	remove(filename);
+	zf_t *zf = zfopen(filename, "r");
+	assert(zf == NULL);
+}
+
 /* test zfopen / zfclose with len 100M */
 #define TEST_ARR_LEN 		1000000
 unittest(with(TEST_ARR_LEN))
