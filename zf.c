@@ -623,6 +623,14 @@ unittest()
 	assert(zf == NULL);
 }
 
+/* redirect to stdout */
+unittest()
+{
+	zf_t *zf = zfopen("-", "w");
+	assert(zf != NULL);
+	zfclose(zf);
+}
+
 /* test zfopen / zfclose with len 100M */
 #define TEST_ARR_LEN 		1000000
 unittest(with(TEST_ARR_LEN))
