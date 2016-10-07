@@ -201,14 +201,25 @@ zf_t *zfopen(
 		return(NULL);
 	}
 
-	/* determine format */
+	/* check length */
+	uint64_t path_len = strlen(path);
+	uint64_t mode_len = strlen(mode);
+	if(path_len == 0 || mode_len == 0) {
+		return(NULL);
+	}
+
 	char *path_dup = (char *)path;
 	char *mode_dup = (char *)mode;
-	char const *path_tail = path + strlen(path);
-	char const *mode_tail = mode + strlen(mode);
+
+	char const *path_tail = path + path_len;
+	char const *mode_tail = mode + mode_len;
+
+	/* determine format */
 	struct zf_functions_s const *fn = &fn_table[0];
-	for(int64_t i = 1; i < sizeof(fn_table) / sizeof(struct zf_functions_s); i++) {
-		
+	for(uint64_t i = 1; i < sizeof(fn_table) / sizeof(struct zf_functions_s); i++) {
+		/* skip if ext string is longer than path string */
+		if(path_len < strlen(fn_table[i].ext)) { continue; }
+
 		/* check path */
 		if(strncmp(path_tail - strlen(fn_table[i].ext),
 			fn_table[i].ext,
@@ -220,6 +231,9 @@ zf_t *zfopen(
 			path_dup[strlen(path) - strlen(fn_table[i].ext)] = '\0';
 			break;
 		}
+
+		/* skip if ext string is longer than mode string */
+		if(mode_len < strlen(fn_table[i].ext)) { continue; }
 
 		/* check mode */
 		if(strncmp(mode_tail - strlen(fn_table[i].ext),
@@ -336,10 +350,11 @@ int zfclose(
  */
 size_t zfread(
 	zf_t *fp,
-	void *ptr,
+	void *_ptr,
 	size_t len)
 {
 	struct zf_intl_s *fio = (struct zf_intl_s *)fp;
+	uint8_t *ptr = (uint8_t *)_ptr;
 	size_t copied_size = 0;
 
 	/* check eof */
@@ -381,10 +396,11 @@ size_t zfread(
  */
 size_t zfpeek(
 	zf_t *fp,
-	void *ptr,
+	void *_ptr,
 	size_t len)
 {
 	struct zf_intl_s *fio = (struct zf_intl_s *)fp;
+	uint8_t *ptr = (uint8_t *)_ptr;
 	size_t copied_size = 0;
 
 	/* check eof */
@@ -421,7 +437,7 @@ size_t zfpeek(
 
 		/* update status */
 		copied_size += copy_size;
-		fio->eof = (read_size < fio->size - fio->end) + (copied_size == 0);
+		fio->eof = (read_size < (uint64_t)(fio->size - fio->end)) + (copied_size == 0);
 		fio->end += read_size;
 	}
 	return(copied_size);
@@ -501,7 +517,7 @@ int zfputc(
 	if(fio->curr == fio->size) {
 		fio->curr = 0;
 		uint64_t written = fio->fn.write(fio->fp, fio->buf, fio->size);
-		if(written != fio->size) {
+		if((int64_t)written != fio->size) {
 			return(-1);
 		}
 	}
@@ -538,7 +554,8 @@ int zfprintf(
 	if(fio->curr != 0) {
 		uint64_t flush = fio->fn.write(fio->fp, fio->buf, fio->curr);
 		/* something is wrong */
-		if(flush != fio->curr) {
+		if((int64_t)flush != fio->curr) {
+			va_end(l);
 			return(0);
 		}
 	}
